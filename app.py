@@ -4,9 +4,11 @@ from flask import Flask, request, send_file, render_template
 import io
 import os
 from flask_cors import CORS
+from pandas.errors import EmptyDataError # <-- ¡ESTA ES LA LÍNEA CRÍTICA AÑADIDA!
 
+# Inicializar la aplicación Flask
 app = Flask(__name__)
-# Configuración explícita de CORS para permitir todas las peticiones (origen, métodos, headers)
+# Configuración explícita de CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- Lógica de Procesamiento del Script Original ---
@@ -129,11 +131,6 @@ def procesar_archivos_excel(df):
 @app.route('/')
 def index():
     """Sirve la página principal de la aplicación."""
-    # En una aplicación real, usarías render_template, pero como solo tengo un archivo
-    # lo devolveré desde aquí. (En este caso, render_template asume que el HTML
-    # está en una carpeta 'templates', pero como lo generarás también, lo pongo)
-    # Sin embargo, en la práctica, Flask busca index.html. La instrucción me pide
-    # generar el archivo, así que el usuario lo tendrá en el mismo entorno.
     return render_template('index.html')
 
 @app.route('/process', methods=['POST'])
@@ -151,10 +148,19 @@ def process_file():
     if not file.filename.endswith(('.xlsx', '.xls')):
         return {'error': 'Formato de archivo no soportado. Por favor, sube un .xlsx o .xls.'}, 400
 
+    df = None # Inicializar df para manejar errores de KeyError más tarde
     try:
         # Leer el archivo Excel cargado en memoria
         file_stream = io.BytesIO(file.read())
         df = pd.read_excel(file_stream)
+
+        # 1. Diagnóstico: Verificar columnas requeridas
+        required_columns = ['CLASS', 'INV_AMOUNT', 'CUSTOMER_NAME', 'TRX_NUMBER']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+
+        if missing_columns:
+             # Este error se enviará al frontend
+             raise KeyError(f"Faltan las siguientes columnas requeridas: {', '.join(missing_columns)}")
         
         # Ejecutar la lógica de procesamiento
         df_resultado = procesar_archivos_excel(df)
@@ -176,9 +182,24 @@ def process_file():
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
+    except KeyError as e:
+        # Manejo específico para columnas faltantes o incorrectas
+        column_list = df.columns.tolist() if df is not None else "N/A"
+        error_msg = f'Error en el formato del archivo. {str(e)}. Las columnas encontradas son: {column_list}'
+        print(f"Error de Key: {error_msg}")
+        return {'error': error_msg}, 400
+
+    except EmptyDataError:
+        # Manejo para archivo vacío
+        error_msg = 'El archivo Excel está vacío o la hoja no contiene datos.'
+        print(f"Error de Datos Vacíos: {error_msg}")
+        return {'error': error_msg}, 400
+
     except Exception as e:
-        print(f"Error durante el procesamiento: {e}")
-        return {'error': f'Ocurrió un error inesperado durante el procesamiento: {str(e)}'}, 500
+        # Manejo para cualquier otro error inesperado
+        error_msg = f'Ocurrió un error inesperado durante el procesamiento. Verifique los logs del servidor para detalles.'
+        print(f"Error General: {e}")
+        return {'error': error_msg}, 500
 
 # Se incluye esta línea para que Flask sepa cómo ejecutarlo, 
 # aunque gunicorn (en tu Procfile) lo inicia directamente.
