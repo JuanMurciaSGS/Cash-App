@@ -23,8 +23,7 @@
     <div class="max-w-xl w-full p-8 bg-white shadow-2xl rounded-xl border border-gray-100">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">Procesador de Pagos</h1>
         <p class="text-gray-500 mb-6">
-            Sube tu archivo <code class="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-sm font-mono">Ageing.xlsx</code>.
-            <span class="block mt-1 text-xs text-gray-400">Columnas requeridas: CLASS, INV_AMOUNT, CUSTOMER_NAME, TRX_NUMBER.</span>
+            Sube tu archivo <code class="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-sm font-mono">Ageing.xlsx</code> para asociar facturas y pagos.
         </p>
         
         <form id="uploadForm" class="space-y-6">
@@ -63,64 +62,58 @@
     </div>
 
     <script>
-        /**
-         * Actualiza el div de estado con el mensaje y el estilo apropiados.
-         * @param {string} message - El mensaje a mostrar.
-         * @param {('info'|'success'|'error')} type - El tipo de mensaje.
-         */
-        function updateStatus(message, type) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = message;
-            statusDiv.classList.remove('hidden');
-            
-            let classes = '';
-            if (type === 'success') {
-                classes = 'border-green-400 bg-green-100 text-green-700';
-            } else if (type === 'error') {
-                classes = 'border-red-400 bg-red-100 text-red-700';
-            } else { // info
-                classes = 'border-blue-400 bg-blue-100 text-blue-700';
-            }
-            
-            statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border ' + classes;
-        }
-
         document.getElementById('uploadForm').addEventListener('submit', async function(event) {
             event.preventDefault();
             
+            const form = event.target;
             const fileInput = document.getElementById('excelFile');
+            const statusDiv = document.getElementById('status');
             const button = document.getElementById('processButton');
             const spinner = document.getElementById('spinner');
 
-            // Preparar UI
-            updateStatus('Enviando archivo al servidor...', 'info');
+            statusDiv.classList.add('hidden');
             button.disabled = true;
             spinner.classList.remove('hidden');
-            button.childNodes[2].nodeValue = ' Procesando...'; // Actualiza el texto junto al spinner
+            button.childNodes[1].textContent = ' Procesando...';
+            statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border hidden transition duration-300';
+
 
             if (fileInput.files.length === 0) {
                 updateStatus('Por favor, selecciona un archivo.', 'error');
-                // Restaurar UI
                 button.disabled = false;
                 spinner.classList.add('hidden');
-                button.childNodes[2].nodeValue = ' Procesar y Descargar Reporte';
+                button.childNodes[1].textContent = ' Procesar y Descargar Reporte';
                 return;
             }
 
+            const file = fileInput.files[0];
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            formData.append('file', file);
+
+            updateStatus('Cargando y procesando el archivo...', 'info');
 
             try {
+                // Envía el archivo al endpoint /process
                 const response = await fetch('/process', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (response.ok) {
-                    // Éxito: Iniciar descarga
+                    // Si la respuesta es OK, inicia la descarga del archivo Excel
                     const blob = await response.blob();
-                    const filename = 'Ageing_Pagos_Asociados.xlsx';
-                    
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'Ageing_Pagos_Asociados.xlsx';
+
+                    // Intenta obtener el nombre del archivo del encabezado
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                        if (filenameMatch && filenameMatch[1]) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+
+                    // Crea un enlace temporal y simula un clic para descargar
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.style.display = 'none';
@@ -133,21 +126,44 @@
                     updateStatus(`✅ Proceso completado. El archivo '${filename}' se ha descargado exitosamente.`, 'success');
 
                 } else {
-                    // Error: Mostrar mensaje detallado del servidor
+                    // Maneja errores del servidor
                     const errorJson = await response.json();
-                    updateStatus(`❌ Error: ${errorJson.error || 'Ocurrió un error inesperado en el servidor.'}`, 'error');
+                    updateStatus(`❌ Error del servidor: ${errorJson.error || 'Error desconocido'}`, 'error');
                 }
             } catch (error) {
-                // Error de red
-                console.error('Network Error:', error);
-                updateStatus('❌ Error de conexión al servidor. Asegúrate de que el servicio web de Render esté en línea.', 'error');
+                // Maneja errores de red
+                console.error('Error de red:', error);
+                updateStatus('❌ Error de conexión al servidor. Inténtalo de nuevo.', 'error');
             } finally {
-                // Restaurar UI
                 button.disabled = false;
                 spinner.classList.add('hidden');
-                button.childNodes[2].nodeValue = ' Procesar y Descargar Reporte';
+                button.childNodes[1].textContent = ' Procesar y Descargar Reporte';
             }
         });
+
+        /**
+         * Actualiza el div de estado con el mensaje y el estilo apropiados.
+         * @param {string} message - El mensaje a mostrar.
+         * @param {('info'|'success'|'error')} type - El tipo de mensaje.
+         */
+        function updateStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.classList.remove('hidden');
+            
+            // Definir clases de color según el tipo de mensaje (Tailwind CSS)
+            let classes = '';
+            if (type === 'success') {
+                classes = 'border-green-400 bg-green-100 text-green-700';
+            } else if (type === 'error') {
+                classes = 'border-red-400 bg-red-100 text-red-700';
+            } else { // info
+                classes = 'border-blue-400 bg-blue-100 text-blue-700';
+            }
+            
+            statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border ' + classes;
+        }
+
     </script>
 
 </body>
