@@ -3,9 +3,11 @@ from itertools import combinations
 from flask import Flask, request, send_file, render_template
 import io
 import os
+from flask_cors import CORS
 
-# Inicializar la aplicación Flask
 app = Flask(__name__)
+# Configuración explícita de CORS para permitir todas las peticiones (origen, métodos, headers)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # --- Lógica de Procesamiento del Script Original ---
 
