@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procesador de Pagos SGS</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Configuración de fuente Inter y colores de fondo */
+        body {
+            font-family: "Inter", sans-serif;
+            background-color: #f7f9fb;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="max-w-xl w-full p-8 bg-white shadow-2xl rounded-xl border border-gray-100">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Procesador de Pagos</h1>
+        <p class="text-gray-500 mb-6">
+            Sube tu archivo <code class="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-sm font-mono">Ageing.xlsx</code> para asociar facturas y pagos.
+        </p>
+        
+        <form id="uploadForm" class="space-y-6">
+            <div>
+                <label for="excelFile" class="block text-sm font-medium text-gray-700 mb-2">Selecciona Archivo Excel (.xlsx, .xls)</label>
+                <input 
+                    type="file" 
+                    id="excelFile" 
+                    name="file" 
+                    accept=".xlsx, .xls" 
+                    required 
+                    class="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 p-2 
+                           file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold
+                           file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
+                >
+            </div>
+            
+            <button 
+                type="submit" 
+                id="processButton"
+                class="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-lg 
+                       shadow-lg text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 
+                       focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out disabled:opacity-50"
+            >
+                <svg id="spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Procesar y Descargar Reporte
+            </button>
+        </form>
+        
+        <div id="status" class="mt-6 p-4 text-sm rounded-lg border hidden transition duration-300">
+            <!-- Mensajes de estado -->
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const form = event.target;
+            const fileInput = document.getElementById('excelFile');
+            const statusDiv = document.getElementById('status');
+            const button = document.getElementById('processButton');
+            const spinner = document.getElementById('spinner');
+
+            statusDiv.classList.add('hidden');
+            button.disabled = true;
+            spinner.classList.remove('hidden');
+            button.childNodes[1].textContent = ' Procesando...';
+            statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border hidden transition duration-300';
+
+
+            if (fileInput.files.length === 0) {
+                updateStatus('Por favor, selecciona un archivo.', 'error');
+                button.disabled = false;
+                spinner.classList.add('hidden');
+                button.childNodes[1].textContent = ' Procesar y Descargar Reporte';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            updateStatus('Cargando y procesando el archivo...', 'info');
+
+            try {
+                // Envía el archivo al endpoint /process
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Si la respuesta es OK, inicia la descarga del archivo Excel
+                    const blob = await response.blob();
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    let filename = 'Ageing_Pagos_Asociados.xlsx';
+
+                    // Intenta obtener el nombre del archivo del encabezado
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                        if (filenameMatch && filenameMatch[1]) {
+                            filename = filenameMatch[1];
+                        }
+                    }
+
+                    // Crea un enlace temporal y simula un clic para descargar
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    
+                    updateStatus(`✅ Proceso completado. El archivo '${filename}' se ha descargado exitosamente.`, 'success');
+
+                } else {
+                    // Maneja errores del servidor
+                    const errorJson = await response.json();
+                    updateStatus(`❌ Error del servidor: ${errorJson.error || 'Error desconocido'}`, 'error');
+                }
+            } catch (error) {
+                // Maneja errores de red
+                console.error('Error de red:', error);
+                updateStatus('❌ Error de conexión al servidor. Inténtalo de nuevo.', 'error');
+            } finally {
+                button.disabled = false;
+                spinner.classList.add('hidden');
+                button.childNodes[1].textContent = ' Procesar y Descargar Reporte';
+            }
+        });
+
+        /**
+         * Actualiza el div de estado con el mensaje y el estilo apropiados.
+         * @param {string} message - El mensaje a mostrar.
+         * @param {('info'|'success'|'error')} type - El tipo de mensaje.
+         */
+        function updateStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.classList.remove('hidden');
+            
+            // Definir clases de color según el tipo de mensaje (Tailwind CSS)
+            let classes = '';
+            if (type === 'success') {
+                classes = 'border-green-400 bg-green-100 text-green-700';
+            } else if (type === 'error') {
+                classes = 'border-red-400 bg-red-100 text-red-700';
+            } else { // info
+                classes = 'border-blue-400 bg-blue-100 text-blue-700';
+            }
+            
+            statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border ' + classes;
+        }
+
+    </script>
+
+</body>
+</html>
