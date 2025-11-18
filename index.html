@@ -23,7 +23,8 @@
     <div class="max-w-xl w-full p-8 bg-white shadow-2xl rounded-xl border border-gray-100">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">Procesador de Pagos</h1>
         <p class="text-gray-500 mb-6">
-            Sube tu archivo <code class="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-sm font-mono">Ageing.xlsx</code> para asociar facturas y pagos.
+            Sube tu archivo <code class="bg-indigo-50 text-indigo-700 px-1 py-0.5 rounded text-sm font-mono">Ageing.xlsx</code>.
+            <span class="block mt-1 text-xs text-gray-400">Columnas requeridas: CLASS, INV_AMOUNT, CUSTOMER_NAME, TRX_NUMBER.</span>
         </p>
         
         <form id="uploadForm" class="space-y-6">
@@ -62,85 +63,6 @@
     </div>
 
     <script>
-        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
-            event.preventDefault();
-            
-            const form = event.target;
-            const fileInput = document.getElementById('excelFile');
-            const statusDiv = document.getElementById('status');
-            const button = document.getElementById('processButton');
-            const spinner = document.getElementById('spinner');
-
-            statusDiv.classList.add('hidden');
-            button.disabled = true;
-            spinner.classList.remove('hidden');
-            button.childNodes[1].textContent = ' Procesando...';
-            statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border hidden transition duration-300';
-
-
-            if (fileInput.files.length === 0) {
-                updateStatus('Por favor, selecciona un archivo.', 'error');
-                button.disabled = false;
-                spinner.classList.add('hidden');
-                button.childNodes[1].textContent = ' Procesar y Descargar Reporte';
-                return;
-            }
-
-            const file = fileInput.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-
-            updateStatus('Cargando y procesando el archivo...', 'info');
-
-            try {
-                // Envía el archivo al endpoint /process
-                const response = await fetch('/process', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (response.ok) {
-                    // Si la respuesta es OK, inicia la descarga del archivo Excel
-                    const blob = await response.blob();
-                    const contentDisposition = response.headers.get('Content-Disposition');
-                    let filename = 'Ageing_Pagos_Asociados.xlsx';
-
-                    // Intenta obtener el nombre del archivo del encabezado
-                    if (contentDisposition) {
-                        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-                        if (filenameMatch && filenameMatch[1]) {
-                            filename = filenameMatch[1];
-                        }
-                    }
-
-                    // Crea un enlace temporal y simula un clic para descargar
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    
-                    updateStatus(`✅ Proceso completado. El archivo '${filename}' se ha descargado exitosamente.`, 'success');
-
-                } else {
-                    // Maneja errores del servidor
-                    const errorJson = await response.json();
-                    updateStatus(`❌ Error del servidor: ${errorJson.error || 'Error desconocido'}`, 'error');
-                }
-            } catch (error) {
-                // Maneja errores de red
-                console.error('Error de red:', error);
-                updateStatus('❌ Error de conexión al servidor. Inténtalo de nuevo.', 'error');
-            } finally {
-                button.disabled = false;
-                spinner.classList.add('hidden');
-                button.childNodes[1].textContent = ' Procesar y Descargar Reporte';
-            }
-        });
-
         /**
          * Actualiza el div de estado con el mensaje y el estilo apropiados.
          * @param {string} message - El mensaje a mostrar.
@@ -151,7 +73,6 @@
             statusDiv.textContent = message;
             statusDiv.classList.remove('hidden');
             
-            // Definir clases de color según el tipo de mensaje (Tailwind CSS)
             let classes = '';
             if (type === 'success') {
                 classes = 'border-green-400 bg-green-100 text-green-700';
@@ -164,6 +85,69 @@
             statusDiv.className = 'mt-6 p-4 text-sm rounded-lg border ' + classes;
         }
 
+        document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const fileInput = document.getElementById('excelFile');
+            const button = document.getElementById('processButton');
+            const spinner = document.getElementById('spinner');
+
+            // Preparar UI
+            updateStatus('Enviando archivo al servidor...', 'info');
+            button.disabled = true;
+            spinner.classList.remove('hidden');
+            button.childNodes[2].nodeValue = ' Procesando...'; // Actualiza el texto junto al spinner
+
+            if (fileInput.files.length === 0) {
+                updateStatus('Por favor, selecciona un archivo.', 'error');
+                // Restaurar UI
+                button.disabled = false;
+                spinner.classList.add('hidden');
+                button.childNodes[2].nodeValue = ' Procesar y Descargar Reporte';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Éxito: Iniciar descarga
+                    const blob = await response.blob();
+                    const filename = 'Ageing_Pagos_Asociados.xlsx';
+                    
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    
+                    updateStatus(`✅ Proceso completado. El archivo '${filename}' se ha descargado exitosamente.`, 'success');
+
+                } else {
+                    // Error: Mostrar mensaje detallado del servidor
+                    const errorJson = await response.json();
+                    updateStatus(`❌ Error: ${errorJson.error || 'Ocurrió un error inesperado en el servidor.'}`, 'error');
+                }
+            } catch (error) {
+                // Error de red
+                console.error('Network Error:', error);
+                updateStatus('❌ Error de conexión al servidor. Asegúrate de que el servicio web de Render esté en línea.', 'error');
+            } finally {
+                // Restaurar UI
+                button.disabled = false;
+                spinner.classList.add('hidden');
+                button.childNodes[2].nodeValue = ' Procesar y Descargar Reporte';
+            }
+        });
     </script>
 
 </body>
