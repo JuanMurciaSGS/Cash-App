@@ -1,10 +1,10 @@
 import pandas as pd
 from itertools import combinations
-from flask import Flask, request, send_file, render_template
+from flask import Flask, request, send_file # Se eliminó render_template
 import io
 import os
 from flask_cors import CORS
-from pandas.errors import EmptyDataError # <-- ¡ESTA ES LA LÍNEA CRÍTICA AÑADIDA!
+from pandas.errors import EmptyDataError 
 
 # Inicializar la aplicación Flask
 app = Flask(__name__)
@@ -131,7 +131,14 @@ def procesar_archivos_excel(df):
 @app.route('/')
 def index():
     """Sirve la página principal de la aplicación."""
-    return render_template('index.html')
+    try:
+        # Intenta leer y servir el archivo index.html en el directorio raíz
+        with open('index.html', 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        return html_content, 200, {'Content-Type': 'text/html'}
+    except FileNotFoundError:
+        # Si el archivo no se encuentra (e.g., está en otra carpeta), retorna un mensaje simple.
+        return "Frontend HTML file not found, but Payment Processor Server is Active.", 200
 
 @app.route('/process', methods=['POST'])
 def process_file():
@@ -204,4 +211,6 @@ def process_file():
 # Se incluye esta línea para que Flask sepa cómo ejecutarlo, 
 # aunque gunicorn (en tu Procfile) lo inicia directamente.
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Usar un puerto dinámico si fuera necesario, pero Render lo maneja
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
